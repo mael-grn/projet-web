@@ -13,14 +13,15 @@ logging.basicConfig(
 
 # Déclaration des variables
 app = Flask(__name__)
-products = []
 logger = logging.getLogger(__name__)
+products = []
+SOURCE_URL = "https://dimensweb.uqac.ca/~jgnault/shops/products/"
 
 # Au lancement de l'application
 with app.app_context():
     # Chargement des données
     logger.info("Récupération des données en ligne...")
-    res = requests.get("https://dimensweb.uqac.ca/~jgnault/shops/products/")
+    res = requests.get(SOURCE_URL)
 
     # Vérification de la réponse
     if res.status_code != 200:
@@ -35,7 +36,6 @@ with app.app_context():
         else:
             # Réussite
             logger.info("Données récupérées avec succès")
-            clean_products = clean_products(res_json['products'])
             products = res_json['products']
 
 @app.route('/')
