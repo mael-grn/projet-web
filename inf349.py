@@ -1,10 +1,12 @@
 from flask import *
 import logging
-from database import init_database
+from peewee import SqliteDatabase
 from model.order import Order
 from model.product import Product
-from model.shippingInfo import ShippingInfo
-from utils.orderUtils import *
+from model.productOrder import ProductOrder
+from model.requestError import RequestError
+from utils.orderUtils import calculate_total_price, calculate_total_price_tax, calculate_shipping_price, \
+    update_order_shipping_and_email, update_order_payment
 from utils.productUtils import load_products
 
 # Initialisation du logger
@@ -14,18 +16,35 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'  # Format du log
 )
 
-# Déclaration des variables
+# Initialisation de l'application Flask
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
 
-# Au lancement de l'application, on initialise la base de données et on charge les produits
-# Avec init database, on crée les tables par rapport aux modèles
-# Avec load products, on charge les produits depuis la source externe dans la base de données, même si ceux-ci existent déjà en base de données afin de les mettre à jour.
-with app.app_context():
-    logger.info("Initialisation de la base de données")
-    init_database()
+# Configuration de la base de données (ex: SQLite)
+DATABASE = "database.db"
+db = SqliteDatabase(DATABASE)
+
+# Fonction pour initialiser la base de données
+def init_db():
+    from model.creditCard import CreditCard
+    from model.order import Order
+    from model.product import Product
+    from model.productOrder import ProductOrder
+    from model.shippingInfo import ShippingInfo
+    from model.transaction import Transaction
+    db.connect()
+    db.create_tables([Product, ProductOrder, ShippingInfo, CreditCard, Transaction, Order], safe=True)
     logger.info("Initialisation des produits")
     load_products()
+    db.close()
+    logger.info("Base de données initialisée")
+
+# Commande Flask pour initialiser la base de données
+@app.cli.command("init-db")
+def init_db_command():
+    """Initialise la base de données."""
+    init_db()
+    print("Base de données créée avec succès.")
 
 @app.get('/')
 def get_all_products():
@@ -46,6 +65,7 @@ def create_order():
             or 'id' not in data['product'] \
             or 'quantity' not in data['product'] \
             or data["product"]["quantity"] <= 0:
+        logger.error("La requête ne contient pas les champs nécessaires")
         return {
             "errors": {
                 "product" : {
@@ -59,10 +79,12 @@ def create_order():
 
     # Vérification de l'existence du produit, sinon erreur 404
     if not product:
+        logger.error("Le produit demandé n'existe pas")
         return {"error": "product-not-found"}, 404
 
     # Vérification de la quantité en stock, sinon erreur 422
     if not product.in_stock:
+        logger.error("Le produit demandé n'est pas en inventaire")
         return {
             "errors" : {
                 "product": {
@@ -76,6 +98,7 @@ def create_order():
     order = Order.create()
     ProductOrder.create(quantity=data['product']['quantity'], order=order, product=Product.get_by_id(data['product']['id']))
 
+    logger.info(f"Commande {order.id} créée avec succès")
     return {"order_link": f"/order/{order.id}"}, 302
 
 @app.get('/order/<int:order_id>')
@@ -87,6 +110,7 @@ def get_order(order_id):
 
     # Vérification de l'existence de la commande, sinon erreur 404
     if not order:
+        logger.error("La commande demandée n'existe pas")
         return {"error": "order-not-found"}, 404
 
     # Récupération des produits de la commande
@@ -95,10 +119,12 @@ def get_order(order_id):
 
     # Si aucun produit n'a été attribué à la commande
     if len(product_order) == 0:
+        logger.error("La commande est vide")
         return {"error": "order-empty"}, 404
 
     # Si la commande a plus d'un seul produit
     if len(product_order) > 1:
+        logger.error("La commande contient plusieurs produits")
         return {"error": "multiple-products"}, 500
 
     # Conversion en dictionnaire
@@ -115,7 +141,8 @@ def get_order(order_id):
     if order.shipping_information:
         order_data['shipping_information'] = order.shipping_information.__data__
 
-    return order_data
+    logger.info(f"Commande {order_id} récupérée avec succès")
+    return {"order": order_data}
 
 @app.put('/order/<int:order_id>')
 def update_order(order_id):
@@ -126,12 +153,14 @@ def update_order(order_id):
 
     # Vérification de l'existence de la commande, sinon erreur 404
     if not order:
+        logger.error("La commande demandée n'existe pas")
         return {"error": "order-not-found"}, 404
 
     # Récupération des données de la requête
     data = request.json
 
-    if not data or not "order" in data:
+    if not data:
+        logger.error("La requête ne contient pas les champs nécessaires")
         return {
             "errors": {
                 "order": {
@@ -141,52 +170,60 @@ def update_order(order_id):
             }
         }, 422
 
-    # Vérification de la présence des champs nécessaires pour l'email, sinon erreur 422
-    if not "email" in data["order"]:
+    # On redirige vers la fonction appropriée en fonction des données reçues
+    if "order" in data and "email" in data["order"] and "shipping_information" in data["order"] and not "credit_card" in data:
+
+        logger.info(f"Mise à jour de l'adresse et de l'email de la commande {order_id}")
+
+        # Mise à jour des données
+        try:
+            update_order_shipping_and_email(order, data)
+            # Retourne la commande complète
+            logger.info(f"Commande {order_id} mise à jour avec succès")
+            return get_order(order.id)
+
+        except RequestError as e:
+            logger.error(f"Erreur lors de la mise à jour de la commande {order_id}")
+            return {
+                "errors": {
+                    "order": {
+                        "code": str(e),
+                        "name": e.details
+                    }
+                }
+            }, e.code
+
+    elif "credit_card" in data and not "order" in data:
+
+        logger.info(f"Mise à jour de la carte de crédit de la commande {order_id}")
+
+        # Mise à jour des données
+        try:
+            update_order_payment(order, data)
+            # Retourne la commande complète
+            logger.info(f"Commande {order_id} mise à jour avec succès")
+            return get_order(order.id)
+
+        except RequestError as e:
+            logger.error(f"Erreur lors de la mise à jour de la commande {order_id}")
+            return {
+                "errors": {
+                    "order": {
+                        "code": str(e),
+                        "name": e.details
+                    }
+                }
+            }, e.code
+    else:
+        logger.error("La requête ne contient pas les champs nécessaires")
         return {
             "errors": {
                 "order": {
                     "code": "missing-fields",
-                    "name": "La mise à jour d'une commande nécessite un email"
+                    "name": "La mise à jour d'une commande nécessite des informations d'une adresse et d'un email, ou d'une carte de crédit"
                 }
             }
         }, 422
-
-    # Vérification de la présence des champs nécessaires pour l'adresse, sinon erreur 422
-    if not "shipping_information" in data["order"] \
-            or not "country" in data["order"]["shipping_information"] \
-            or not "address" in data["order"]["shipping_information"] \
-            or not "postal_code" in data["order"]["shipping_information"] \
-            or not "city" in data["order"]["shipping_information"] \
-            or not "province" in data["order"]["shipping_information"]:
-        return {
-            "errors": {
-                "order": {
-                    "code": "missing-fields",
-                    "name": "La mise à jour d'une commande nécessite des informations de livraison"
-                }
-            }
-        }, 422
-
-    # Création de l'adresse de livraison
-    shipping_info = ShippingInfo.create(
-        country= data["order"]["shipping_information"]["country"],
-        address= data["order"]["shipping_information"]["address"],
-        postal_code= data["order"]["shipping_information"]["postal_code"],
-        city= data["order"]["shipping_information"]["city"],
-        province= data["order"]["shipping_information"]["province"]
-    )
-
-    # Mise à jour de la commande
-    order.email = data["order"]["email"]
-    order.shipping_information = shipping_info
-
-    # Sauvegarde de la commande
-    order.save()
-
-    return get_order(order_id)
-
 
 if __name__ == "__main__":
     app.run(debug=True)
-
