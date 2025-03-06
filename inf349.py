@@ -5,9 +5,9 @@ from model.order import Order
 from model.product import Product
 from model.productOrder import ProductOrder
 from model.requestError import RequestError
-from utils.orderUtils import calculate_total_price, calculate_total_price_tax, calculate_shipping_price, \
+from controller.orderUtils import calculate_total_price, calculate_total_price_tax, calculate_shipping_price, \
     update_order_shipping_and_email, update_order_payment
-from utils.productUtils import load_products
+from controller.productUtils import load_products
 
 # Initialisation du logger
 logging.basicConfig(
