@@ -1,6 +1,6 @@
 def test_create_order_invalid_product(client):
     """ Vérifie qu'une commande avec un produit invalide retourne 404 """
-    response = client.post('/order', json={"product": {"id": 999999}})
+    response = client.post('/order', json={"product": {"id": 999999, "quantity": 1}})
     assert response.status_code == 404
 
 def test_payment_already_paid_order(client):

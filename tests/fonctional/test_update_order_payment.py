@@ -3,7 +3,18 @@ def test_update_order_payment_success(client):
     order_response = client.post('/order', json={"product": {"id": 1, "quantity": 1}})
     assert order_response.status_code == 302
     order_url = order_response.get_json()["order_link"]
-
+    client.put(order_url, json={
+        "order": {
+            "email": "user@example.com",
+            "shipping_information": {
+                "country": "Canada",
+                "address": "123 rue Exemple",
+                "postal_code": "A1B 2C3",
+                "city": "Montréal",
+                "province": "QC"
+            }
+        }
+    })
     response = client.put(order_url, json={
         "credit_card": {
             "name": "John Doe",
@@ -119,6 +130,18 @@ def test_transaction_details_stored(client):
     """ Vérifie que les informations de transaction sont bien enregistrées après paiement """
     order_response = client.post('/order', json={"product": {"id": 1, "quantity": 1}})
     order_url = order_response.get_json()["order_link"]
+    client.put(order_url, json={
+        "order": {
+            "email": "user@example.com",
+            "shipping_information": {
+                "country": "Canada",
+                "address": "123 rue Exemple",
+                "postal_code": "A1B 2C3",
+                "city": "Montréal",
+                "province": "QC"
+            }
+        }
+    })
 
     response = client.put(order_url, json={
         "credit_card": {
@@ -131,7 +154,9 @@ def test_transaction_details_stored(client):
     })
     assert response.status_code == 200
     data = response.get_json()
-
+    assert isinstance(data["order"]["transaction"], dict)
+    assert "id" in data["order"]["transaction"]
+    assert "success" in data["order"]["transaction"]
     assert "transaction" in data["order"]
     assert "id" in data["order"]["transaction"]
     assert data["order"]["transaction"]["success"] is True

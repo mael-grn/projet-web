@@ -3,9 +3,9 @@ from model.creditCard import CreditCard
 from model.productOrder import ProductOrder
 from model.requestError import RequestError
 from model.transaction import Transaction
-from utils.creditCardUtils import check_credit_card_entity_complete, \
+from controller.creditCardUtils import check_credit_card_entity_complete, \
     send_card_data_distant_payment
-from utils.shippingInfoUtils import create_shipping_info_entity_or_none
+from controller.shippingInfoUtils import create_shipping_info_entity_or_none
 
 TAXE_RATE = {
     "QC": 0.15,
@@ -89,7 +89,6 @@ def update_order_shipping_and_email(order, data):
 
 
 def update_order_payment(order, data):
-
     # Verification des champs necessaires
     check_ready_for_payment(order)
 
@@ -98,11 +97,21 @@ def update_order_payment(order, data):
 
     # Vérification de la validité de la carte de crédit
     res = send_card_data_distant_payment(data["credit_card"], calculate_total_price_tax(order) + calculate_shipping_price(order))
-
     # Création de la carte de crédit et de la transaction
-    credit_card = CreditCard.create(default=res["credit_card"])
-    transaction = Transaction.create(default=res["transaction"])
+    credit_card = CreditCard.create(
+        name=res["credit_card"]["name"],
+        first_digits=res["credit_card"]["first_digits"],
+        last_digits=res["credit_card"]["last_digits"],
+        expiration_year=res["credit_card"]["expiration_year"],
+        expiration_month=res["credit_card"]["expiration_month"],
+        cvv=res["credit_card"].get("cvv", "000")
+    )
 
+    transaction = Transaction.create(
+        id=res["transaction"]["id"],
+        success=res["transaction"]["success"] == "true",
+        amount=res["transaction"]["amount_charged"]
+    )
     # Mise à jour de la commande
     order.credit_card = credit_card
     order.transaction = transaction

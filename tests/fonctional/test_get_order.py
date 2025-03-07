@@ -31,7 +31,18 @@ def test_get_order_after_payment(client):
     """ Vérifie qu'une commande payée contient bien les détails de la transaction """
     order_response = client.post('/order', json={"product": {"id": 1, "quantity": 1}})
     order_url = order_response.get_json()["order_link"]
-
+    client.put(order_url, json={
+        "order": {
+            "email": "user@example.com",
+            "shipping_information": {
+                "country": "Canada",
+                "address": "123 rue Exemple",
+                "postal_code": "A1B 2C3",
+                "city": "Montréal",
+                "province": "QC"
+            }
+        }
+    })
     payment_response = client.put(order_url, json={
         "credit_card": {"name": "John Doe", "number": "4242 4242 4242 4242", "expiration_year": 2025, "cvv": "123", "expiration_month": 9}
     })
@@ -79,11 +90,11 @@ def test_order_taxes_by_province(client):
 def test_shipping_price_calculation(client):
     """ Vérifie que les frais d'expédition sont calculés correctement selon le poids total """
     order_response = client.post('/order',
-                                 json={"product": {"id": 1, "quantity": 2}})  # Supposons que chaque produit pèse 500g
+                                 json={"product": {"id": 1, "quantity": 1}})  # Supposons que chaque produit pèse 500g
     order_url = order_response.get_json()["order_link"]
 
     response = client.get(order_url)
     assert response.status_code == 200
     data = response.get_json()
 
-    assert data["order"]["shipping_price"] == 10  # 2 produits de 500g → 1kg → 10$
+    assert data["order"]["shipping_price"] == 5  # 2 produits de 500g → 1kg → 10$

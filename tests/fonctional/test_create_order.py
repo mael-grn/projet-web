@@ -20,7 +20,7 @@ def test_create_order_failure_missing_fields(client):
 def test_create_order_failure_product_not_found(client):
     """ Vérifie qu'une commande avec un produit inexistant échoue """
     response = client.post('/order', json={
-        "product": {"id": 999999}
+        "product": {"id": 999999, "quantity":4}
     })
     assert response.status_code == 404
 
@@ -34,7 +34,7 @@ def test_create_order_failure_too_large_quantity(client):
 def test_create_order_failure_out_of_stock(client):
     """ Vérifie qu'on ne peut pas commander un produit hors stock """
     response = client.post('/order', json={
-        "product": {"id": 2, "quantity": 1}  # ID d'un produit hors stock
+        "product": {"id": 4, "quantity": 1}  # ID d'un produit hors stock
     })
     assert response.status_code == 422  # Vérifier que l'erreur est bien levée
 def test_create_order_failure_invalid_json(client):
