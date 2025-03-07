@@ -30,23 +30,13 @@ def calculate_total_price(order):
 
 def calculate_total_price_tax(order):
     # Calcul du prix total avec taxes selon la province. Si la province n'est pas dans la liste, on retourne le prix total sans taxes
+    if order :
+        if order.shipping_information:
+            if order.shipping_information :
+                if order.shipping_information.province in TAXE_RATE:
+                    return calculate_total_price(order) * (1 + TAXE_RATE[order.shipping_information.province])
+    return calculate_total_price(order)
 
-    if not order.shipping_information:
-        return calculate_total_price(order)
-
-    match order.shipping_information.province:
-        case "QC":
-            return calculate_total_price(order) * (1 + TAXE_RATE["QC"])
-        case "NS":
-            return calculate_total_price(order) * (1 + TAXE_RATE["NS"])
-        case "ON":
-            return calculate_total_price(order) * (1 + TAXE_RATE["ON"])
-        case "BC":
-            return calculate_total_price(order) * (1 + TAXE_RATE["BC"])
-        case "AB":
-            return calculate_total_price(order) * (1 + TAXE_RATE["AB"])
-        case _:
-            return calculate_total_price(order)
 
 def calculate_shipping_price(order):
     # Calcul du poids total
